@@ -61,6 +61,10 @@ jobs:
     - name: Setup NuGet
       uses: nuget/setup-nuget@v2
 
+    - name: Restore NuGet packages
+      run: |
+         nuget restore ExplorerPatcher.sln
+
     - name: Build Windows 12 dependencies
       shell: cmd
       run: |
