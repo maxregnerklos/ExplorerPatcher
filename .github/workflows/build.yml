@@ -77,8 +77,6 @@ jobs:
         msbuild /m /p:Configuration=${{env.BUILD_CONFIGURATION}} /p:Platform=IA-32 ${{env.SOLUTION_FILE_PATH}}
 
     - name: Build Windows 12 amd64
-      if: github.event.inputs.config == ''
-      working-directory: ${{env.GITHUB_WORKSPACE}}
       run: |
         msbuild /m /p:Configuration=${{env.BUILD_CONFIGURATION}} /p:Platform=amd64 ${{env.SOLUTION_FILE_PATH}}
         if exist "build\Release\x64\Windows12.amd64.dll" (
@@ -86,19 +84,11 @@ jobs:
         )
 
     - name: Build Windows 12 arm64
-      if: github.event.inputs.config == ''
-      working-directory: ${{env.GITHUB_WORKSPACE}}
       run: |
         msbuild /m /p:Configuration=${{env.BUILD_CONFIGURATION}} /p:Platform=arm64 /p:WithArm64XBinaries=true ${{env.SOLUTION_FILE_PATH}}
         if exist "build\Release\ARM64\Windows12.arm64.dll" (
           "build\Release\x64\win12_setup_patch.exe" "build\Release\ARM64\Windows12.arm64.dll" "build\Release\ARM64\win12_setup.exe"
         )
-
-    - name: Build Windows 12 custom
-      if: github.event.inputs.config != ''
-      working-directory: ${{env.GITHUB_WORKSPACE}}
-      run: |
-        msbuild /m /p:Configuration=${{env.BUILD_CONFIGURATION}} /p:Platform=${{ github.event.inputs.config }} ${{env.SOLUTION_FILE_PATH}}
 
     - name: Create expected build directory
       if: github.event.inputs.build_dir != ''
@@ -106,16 +96,6 @@ jobs:
       run: |
         mkdir build
         cp -r ${{ github.event.inputs.build_dir }}/Release build/Release
-
-    - name: Generate Windows 12 system files
-      shell: bash
-      run: |
-        if [[ -f "build/Release/x64/Windows12.amd64.dll" ]]; then
-          cp build/Release/x64/Windows12.amd64.dll build/Release/x64/win12.dll
-        fi
-        if [[ -f "build/Release/ARM64/Windows12.arm64.dll" ]]; then
-          cp build/Release/ARM64/Windows12.arm64.dll build/Release/ARM64/win12.dll
-        fi
 
     - name: Delete intermediate files
       shell: bash
