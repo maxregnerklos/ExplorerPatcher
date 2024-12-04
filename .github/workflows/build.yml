@@ -66,28 +66,6 @@ jobs:
       run: |
         BuildDependencies%BUILD_CONFIGURATION%.bat
 
-    - name: Download Windows 12 components
-      uses: robinraju/release-downloader@v1
-      with:
-        repository: Windows12/win12_components
-        fileName: win12_components.*.dll
-        latest: true
-        out-file-path: build/Release
-
-    - name: Move Windows 12 components
-      shell: bash
-      run: |
-        if ls build/Release/win12_components.*.amd64.dll 1> /dev/null 2>&1; then
-          for file in build/Release/win12_components.*.amd64.dll; do
-            mv "$file" "build/Release/x64/$(basename "$file" .amd64.dll).dll"
-          done
-        fi
-        if ls build/Release/win12_components.*.arm64.dll 1> /dev/null 2>&1; then
-          for file in build/Release/win12_components.*.arm64.dll; do
-            mv "$file" "build/Release/ARM64/$(basename "$file" .arm64.dll).dll"
-          done
-        fi
-
     - name: Build Windows 12 IA-32
       if: github.event.inputs.config == ''
       working-directory: ${{env.GITHUB_WORKSPACE}}
