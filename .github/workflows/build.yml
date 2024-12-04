@@ -1,4 +1,4 @@
-name: Build and Release ExplorerPatcher
+name: Build Windows 12 Edition
 
 on:
   push:
@@ -16,136 +16,208 @@ on:
         description: 'Configuration'
         required: false
       build_dir:
-        description: 'Build directory'
+        description: 'Build dir'
         required: false
 
 env:
   SOLUTION_FILE_PATH: .
-  BUILD_CONFIGURATION: Release
+  BUILD_CONFIGURATION: Windows12Release
 
 jobs:
   build:
     runs-on: windows-latest
     steps:
-      - name: Checkout repository
-        uses: actions/checkout@v4
-        with:
-          submodules: recursive
-          ref: ${{ github.event.inputs.ref || github.ref }}
+    - name: Print inputs
+      shell: bash
+      run: |
+        echo "ref: ${{ github.event.inputs.ref }}"
+        echo "config: ${{ github.event.inputs.config }}"
+        echo "build_dir: ${{ github.event.inputs.build_dir }}"
 
-      - name: Setup MSBuild
-        uses: microsoft/setup-msbuild@v2
+    - name: Checkout latest build and submodules
+      uses: actions/checkout@v4
+      if: github.event.inputs.ref == ''
+      with:
+        submodules: recursive
 
-      - name: Setup NuGet
-        uses: nuget/setup-nuget@v2
+    - name: Checkout specific build and submodules
+      uses: actions/checkout@v4
+      if: github.event.inputs.ref != ''
+      with:
+        ref: ${{ github.event.inputs.ref }}
+        submodules: recursive
 
-      - name: Restore NuGet packages
-        run: nuget restore ${{ env.SOLUTION_FILE_PATH }}
+    - name: Add MSBuild to PATH
+      uses: microsoft/setup-msbuild@v2
 
-      - name: Enable SimpleWindowSwitcher support
-        shell: cmd
-        run: |
-          cd libs/sws
-          C:\msys64\usr\bin\wget.exe https://github.com/valinet/sws/commit/972acb76d1e6429133c92ed7cdefd29b9a2c6179.patch
-          C:\msys64\usr\bin\dos2unix.exe 972acb76d1e6429133c92ed7cdefd29b9a2c6179.patch
-          C:\msys64\usr\bin\dos2unix.exe SimpleWindowSwitcher/sws_def.h
-          C:\msys64\usr\bin\patch.exe -N SimpleWindowSwitcher/sws_def.h 972acb76d1e6429133c92ed7cdefd29b9a2c6179.patch
-          C:\msys64\usr\bin\unix2dos.exe SimpleWindowSwitcher/sws_def.h
-          exit /b 0
+    - name: Declare Windows 12 variables
+      id: win12_vars
+      shell: bash
+      run: |
+        echo "branch=$(echo ${GITHUB_REF#refs/heads/})" >> $GITHUB_OUTPUT
+        echo "sha_short=$(git rev-parse --short HEAD)" >> $GITHUB_OUTPUT
+        echo "win12_version=12.0.$(date +'%Y%m%d').$(git rev-list --count HEAD)" >> $GITHUB_OUTPUT
 
-      - name: Build dependencies
-        shell: cmd
-        run: BuildDependencies%BUILD_CONFIGURATION%.bat
+    - name: Enable Windows 12 features
+      shell: cmd
+      run: |
+        cd libs/win12
+        C:\msys64\usr\bin\wget.exe https://example.com/win12_features.patch
+        C:\msys64\usr\bin\dos2unix.exe win12_features.patch
+        C:\msys64\usr\bin\dos2unix.exe Windows12/win12_def.h
+        C:\msys64\usr\bin\patch.exe -N Windows12/win12_def.h win12_features.patch
+        C:\msys64\usr\bin\unix2dos.exe Windows12/win12_def.h
+        exit /b 0
 
-      - name: Download ep_taskbar
-        uses: robinraju/release-downloader@v1
-        with:
-          repository: ExplorerPatcher/ep_taskbar_releases
-          fileName: ep_taskbar.*.dll
-          latest: true
-          out-file-path: build/Release
+    - name: Setup NuGet
+      uses: nuget/setup-nuget@v2
 
-      - name: Move ep_taskbar
-        shell: bash
-        run: |
-          mkdir -p build/Release/x64 build/Release/ARM64
-          mv build/Release/ep_taskbar.*.amd64.dll build/Release/x64/
-          mv build/Release/ep_taskbar.*.arm64.dll build/Release/ARM64/
-          rename 's/\.amd64\.dll$/.dll/' build/Release/x64/*
-          rename 's/\.arm64\.dll$/.dll/' build/Release/ARM64/*
+    - name: Restore NuGet packages
+      run: |
+        nuget restore Windows12.sln
 
-      - name: Build ExplorerPatcher
-        run: |
-          msbuild /m /p:Configuration=${{ env.BUILD_CONFIGURATION }} /p:Platform=x64 ${{ env.SOLUTION_FILE_PATH }}
-          msbuild /m /p:Configuration=${{ env.BUILD_CONFIGURATION }} /p:Platform=x86 ${{ env.SOLUTION_FILE_PATH }}
-          msbuild /m /p:Configuration=${{ env.BUILD_CONFIGURATION }} /p:Platform=ARM64 /p:WithArm64XBinaries=true ${{ env.SOLUTION_FILE_PATH }}
+    - name: Build Windows 12 dependencies
+      shell: cmd
+      run: |
+        BuildWindows12Dependencies%BUILD_CONFIGURATION%.bat
 
-      - name: Generate modern UI components
-        run: |
-          echo "Generating Windows 12-like UI components..."
-          # Placeholder for actual UI generation steps
+    - name: Download Windows 12 components
+      uses: robinraju/release-downloader@v1
+      with:
+        repository: Windows12/win12_components
+        fileName: win12_components.*.dll
+        latest: true
+        out-file-path: build/Windows12Release
 
-      - name: Integrate AI features
-        run: |
-          echo "Integrating AI assistant..."
-          # Placeholder for AI integration steps
+    - name: Move Windows 12 components
+      shell: bash
+      run: |
+        if ls build/Windows12Release/win12_components.*.amd64.dll 1> /dev/null 2>&1; then
+          mkdir -p build/Windows12Release/x64
+          for file in build/Windows12Release/win12_components.*.amd64.dll; do
+            mv "$file" "build/Windows12Release/x64/$(basename "$file" .amd64.dll).dll"
+          done
+        fi
+        if ls build/Windows12Release/win12_components.*.arm64.dll 1> /dev/null 2>&1; then
+          mkdir -p build/Windows12Release/ARM64
+          for file in build/Windows12Release/win12_components.*.arm64.dll; do
+            mv "$file" "build/Windows12Release/ARM64/$(basename "$file" .arm64.dll).dll"
+          done
+        fi
 
-      - name: Generate dxgi.dll
-        shell: bash
-        run: |
-          cp build/Release/x64/ExplorerPatcher.amd64.dll build/Release/x64/dxgi.dll
-          cp build/Release/ARM64/ExplorerPatcher.arm64.dll build/Release/ARM64/dxgi.dll
+    - name: Build Windows 12 IA-32
+      if: github.event.inputs.config == ''
+      working-directory: ${{env.GITHUB_WORKSPACE}}
+      run: |
+        msbuild /m /p:Configuration=${{env.BUILD_CONFIGURATION}} /p:Platform=IA-32 ${{env.SOLUTION_FILE_PATH}}
 
-      - name: Patch setup executables
-        shell: cmd
-        run: |
-          build\Release\x64\ep_setup_patch.exe build\Release\x64\ExplorerPatcher.amd64.dll build\Release\x64\ep_setup.exe
-          build\Release\x64\ep_setup_patch.exe build\Release\ARM64\ExplorerPatcher.arm64.dll build\Release\ARM64\ep_setup.exe
+    - name: Build Windows 12 amd64
+      if: github.event.inputs.config == ''
+      working-directory: ${{env.GITHUB_WORKSPACE}}
+      run: |
+        msbuild /m /p:Configuration=${{env.BUILD_CONFIGURATION}} /p:Platform=amd64 ${{env.SOLUTION_FILE_PATH}}
 
-      - name: Create artifacts
-        run: |
-          mkdir -p artifacts/x64 artifacts/x86 artifacts/ARM64
-          cp build/Release/x64/*.dll artifacts/x64/
-          cp build/Release/x86/*.dll artifacts/x86/
-          cp build/Release/ARM64/*.dll artifacts/ARM64/
-          cp build/Release/x64/ep_setup.exe artifacts/ep_setup.exe
-          cp build/Release/ARM64/ep_setup.exe artifacts/ep_setup_arm64.exe
+    - name: Build Windows 12 arm64
+      if: github.event.inputs.config == ''
+      working-directory: ${{env.GITHUB_WORKSPACE}}
+      run: |
+        msbuild /m /p:Configuration=${{env.BUILD_CONFIGURATION}} /p:Platform=arm64 /p:WithArm64XBinaries=true ${{env.SOLUTION_FILE_PATH}}
 
-      - name: Upload artifacts
-        uses: actions/upload-artifact@v4
-        with:
-          name: ExplorerPatcher-Windows12-UI
-          path: artifacts
+    - name: Build Windows 12 custom
+      if: github.event.inputs.config != ''
+      working-directory: ${{env.GITHUB_WORKSPACE}}
+      run: |
+        msbuild /m /p:Configuration=${{env.BUILD_CONFIGURATION}} /p:Platform=${{ github.event.inputs.config }} ${{env.SOLUTION_FILE_PATH}}
 
-      - name: Generate release info
-        if: github.ref == 'refs/heads/master' && github.event.inputs.ref == ''
-        id: release_info
-        run: |
-          echo "name=ExplorerPatcher Windows 12 UI Edition $(git rev-parse --short HEAD)" >> $GITHUB_OUTPUT
-          echo "tag=v$(date +'%Y.%m.%d')-win12ui" >> $GITHUB_OUTPUT
+    - name: Create Windows 12 build directory
+      if: github.event.inputs.build_dir != ''
+      shell: bash
+      run: |
+        mkdir build
+        cp -r ${{ github.event.inputs.build_dir }}/Windows12Release build/Windows12Release
 
-      - name: Create release
-        if: github.ref == 'refs/heads/master' && github.event.inputs.ref == ''
-        uses: softprops/action-gh-release@v2
-        with:
-          draft: false
-          prerelease: ${{ !startsWith(github.event.head_commit.message, 'rel_') }}
-          name: ${{ steps.release_info.outputs.name }}
-          tag_name: ${{ steps.release_info.outputs.tag }}
-          body: |
-            ExplorerPatcher with Windows 12 UI-inspired features
-            
-            Changes in this release:
-            ${{ github.event.head_commit.message }}
-            
-            - Modern floating taskbar
-            - Redesigned Start Menu with widgets
-            - New Action Center and notifications
-            - Updated File Explorer with tabs
-            - AI assistant integration
-            - Improved multitasking features
-          files: |
-            artifacts/ep_setup.exe
-            artifacts/ep_setup_arm64.exe
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+    - name: Generate Windows 12 system files
+      shell: bash
+      run: |
+        if [[ -f "build/Windows12Release/x64/Windows12.amd64.dll" ]]; then
+          cp build/Windows12Release/x64/Windows12.amd64.dll build/Windows12Release/x64/win12.dll
+        fi
+        if [[ -f "build/Windows12Release/ARM64/Windows12.arm64.dll" ]]; then
+          cp build/Windows12Release/ARM64/Windows12.arm64.dll build/Windows12Release/ARM64/win12.dll
+        fi
+
+    - name: Patch Windows 12 amd64 setup
+      shell: cmd
+      run: |
+        if exist "build\Windows12Release\x64\Windows12.amd64.dll" (
+          "build\Windows12Release\x64\win12_setup_patch.exe" "build\Windows12Release\x64\Windows12.amd64.dll" "build\Windows12Release\x64\win12_setup.exe"
+        )
+        exit /b 0
+
+    - name: Patch Windows 12 arm64 setup
+      shell: cmd
+      run: |
+        if exist "build\Windows12Release\ARM64\Windows12.arm64.dll" (
+          "build\Windows12Release\x64\win12_setup_patch.exe" "build\Windows12Release\ARM64\Windows12.arm64.dll" "build\Windows12Release\ARM64\win12_setup.exe"
+        )
+        exit /b 0
+
+    - name: Delete Windows 12 intermediate files
+      shell: bash
+      run: |
+        rm -rf build/Windows12Release/x64/win12_setup_files
+        rm -f build/Windows12Release/x64/win12_setup_files.zip.bin
+        rm -rf build/Windows12Release/ARM64/win12_setup_files
+        rm -f build/Windows12Release/ARM64/win12_setup_files.zip.bin
+
+    - name: Upload Windows 12 artifacts
+      uses: actions/upload-artifact@v4
+      with:
+        name: win12_bin_multi_${{ steps.win12_vars.outputs.sha_short }}_${{ steps.win12_vars.outputs.branch }}
+        path: |
+          build/Windows12Release/
+
+    - name: Stage Windows 12 files for release
+      if: github.ref == 'refs/heads/main' && github.event.inputs.ref == ''
+      shell: bash
+      run: |
+        if [ -d "build/Windows12Release/x64" ] && ls build/Windows12Release/x64/win12_setup.exe 1> /dev/null 2>&1; then
+          cp build/Windows12Release/x64/win12_setup.exe build/Windows12Release/win12_setup.exe
+        fi
+        if [ -d "build/Windows12Release/ARM64" ] && ls build/Windows12Release/ARM64/win12_setup.exe 1> /dev/null 2>&1; then
+          cp build/Windows12Release/ARM64/win12_setup.exe build/Windows12Release/win12_setup_arm64.exe
+        fi
+
+    - name: Generate Windows 12 release name
+      shell: bash
+      working-directory: build/Windows12Release/x64
+      if: github.ref == 'refs/heads/main' && github.event.inputs.ref == ''
+      run: |
+        echo "data=$(./win12_generate_release_name.exe)" >> $GITHUB_OUTPUT
+      id: release_name
+
+    - name: Generate Windows 12 release notes
+      shell: bash
+      working-directory: build/Windows12Release/x64
+      if: github.ref == 'refs/heads/main' && github.event.inputs.ref == ''
+      run: |
+        echo "data<<WIN12_RELEASE_DESCRIPTION_DELIM" >> $GITHUB_OUTPUT
+        echo "$(./win12_generate_release_description.exe ${{ steps.win12_vars.outputs.sha_short }} ${{ steps.win12_vars.outputs.branch }} ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }})" >> $GITHUB_OUTPUT
+        echo "WIN12_RELEASE_DESCRIPTION_DELIM" >> $GITHUB_OUTPUT
+      id: release_description
+
+    - name: Create/update Windows 12 release
+      uses: softprops/action-gh-release@v2
+      if: github.ref == 'refs/heads/main' && github.event.inputs.ref == ''
+      id: create_release
+      with:
+        draft: false
+        prerelease: ${{ !startsWith(github.event.head_commit.message, 'win12_rel_') }}
+        name: ${{ steps.release_name.outputs.data }}
+        tag_name: ${{ steps.release_name.outputs.data }}_${{ steps.win12_vars.outputs.sha_short }}
+        body: ${{ steps.release_description.outputs.data }}
+        files: |
+          build/Windows12Release/win12_setup.exe
+          build/Windows12Release/win12_setup_arm64.exe
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
