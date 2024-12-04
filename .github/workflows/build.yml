@@ -21,7 +21,7 @@ on:
 
 env:
   SOLUTION_FILE_PATH: .
-  BUILD_CONFIGURATION: Windows12Release
+  BUILD_CONFIGURATION: Release
 
 jobs:
   build:
@@ -51,7 +51,7 @@ jobs:
       uses: microsoft/setup-msbuild@v2
 
     - name: Declare Windows 12 variables
-      id: win12_vars
+      id: vars
       shell: bash
       run: |
         echo "branch=$(echo ${GITHUB_REF#refs/heads/})" >> $GITHUB_OUTPUT
@@ -68,7 +68,7 @@ jobs:
     - name: Build Windows 12 dependencies
       shell: cmd
       run: |
-        BuildWindows12Dependencies%BUILD_CONFIGURATION%.bat
+        BuildDependencies%BUILD_CONFIGURATION%.bat
 
     - name: Download Windows 12 components
       uses: robinraju/release-downloader@v1
@@ -76,21 +76,19 @@ jobs:
         repository: Windows12/win12_components
         fileName: win12_components.*.dll
         latest: true
-        out-file-path: build/Windows12Release
+        out-file-path: build/Release
 
     - name: Move Windows 12 components
       shell: bash
       run: |
-        if ls build/Windows12Release/win12_components.*.amd64.dll 1> /dev/null 2>&1; then
-          mkdir -p build/Windows12Release/x64
-          for file in build/Windows12Release/win12_components.*.amd64.dll; do
-            mv "$file" "build/Windows12Release/x64/$(basename "$file" .amd64.dll).dll"
+        if ls build/Release/win12_components.*.amd64.dll 1> /dev/null 2>&1; then
+          for file in build/Release/win12_components.*.amd64.dll; do
+            mv "$file" "build/Release/x64/$(basename "$file" .amd64.dll).dll"
           done
         fi
-        if ls build/Windows12Release/win12_components.*.arm64.dll 1> /dev/null 2>&1; then
-          mkdir -p build/Windows12Release/ARM64
-          for file in build/Windows12Release/win12_components.*.arm64.dll; do
-            mv "$file" "build/Windows12Release/ARM64/$(basename "$file" .arm64.dll).dll"
+        if ls build/Release/win12_components.*.arm64.dll 1> /dev/null 2>&1; then
+          for file in build/Release/win12_components.*.arm64.dll; do
+            mv "$file" "build/Release/ARM64/$(basename "$file" .arm64.dll).dll"
           done
         fi
 
@@ -105,12 +103,18 @@ jobs:
       working-directory: ${{env.GITHUB_WORKSPACE}}
       run: |
         msbuild /m /p:Configuration=${{env.BUILD_CONFIGURATION}} /p:Platform=amd64 ${{env.SOLUTION_FILE_PATH}}
+        if exist "build\Release\x64\Windows12.amd64.dll" (
+          "build\Release\x64\win12_setup_patch.exe" "build\Release\x64\Windows12.amd64.dll" "build\Release\x64\win12_setup.exe"
+        )
 
     - name: Build Windows 12 arm64
       if: github.event.inputs.config == ''
       working-directory: ${{env.GITHUB_WORKSPACE}}
       run: |
         msbuild /m /p:Configuration=${{env.BUILD_CONFIGURATION}} /p:Platform=arm64 /p:WithArm64XBinaries=true ${{env.SOLUTION_FILE_PATH}}
+        if exist "build\Release\ARM64\Windows12.arm64.dll" (
+          "build\Release\x64\win12_setup_patch.exe" "build\Release\ARM64\Windows12.arm64.dll" "build\Release\ARM64\win12_setup.exe"
+        )
 
     - name: Build Windows 12 custom
       if: github.event.inputs.config != ''
@@ -118,68 +122,52 @@ jobs:
       run: |
         msbuild /m /p:Configuration=${{env.BUILD_CONFIGURATION}} /p:Platform=${{ github.event.inputs.config }} ${{env.SOLUTION_FILE_PATH}}
 
-    - name: Create Windows 12 build directory
+    - name: Create expected build directory
       if: github.event.inputs.build_dir != ''
       shell: bash
       run: |
         mkdir build
-        cp -r ${{ github.event.inputs.build_dir }}/Windows12Release build/Windows12Release
+        cp -r ${{ github.event.inputs.build_dir }}/Release build/Release
 
     - name: Generate Windows 12 system files
       shell: bash
       run: |
-        if [[ -f "build/Windows12Release/x64/Windows12.amd64.dll" ]]; then
-          cp build/Windows12Release/x64/Windows12.amd64.dll build/Windows12Release/x64/win12.dll
+        if [[ -f "build/Release/x64/Windows12.amd64.dll" ]]; then
+          cp build/Release/x64/Windows12.amd64.dll build/Release/x64/win12.dll
         fi
-        if [[ -f "build/Windows12Release/ARM64/Windows12.arm64.dll" ]]; then
-          cp build/Windows12Release/ARM64/Windows12.arm64.dll build/Windows12Release/ARM64/win12.dll
+        if [[ -f "build/Release/ARM64/Windows12.arm64.dll" ]]; then
+          cp build/Release/ARM64/Windows12.arm64.dll build/Release/ARM64/win12.dll
         fi
 
-    - name: Patch Windows 12 amd64 setup
-      shell: cmd
-      run: |
-        if exist "build\Windows12Release\x64\Windows12.amd64.dll" (
-          "build\Windows12Release\x64\win12_setup_patch.exe" "build\Windows12Release\x64\Windows12.amd64.dll" "build\Windows12Release\x64\win12_setup.exe"
-        )
-        exit /b 0
-
-    - name: Patch Windows 12 arm64 setup
-      shell: cmd
-      run: |
-        if exist "build\Windows12Release\ARM64\Windows12.arm64.dll" (
-          "build\Windows12Release\x64\win12_setup_patch.exe" "build\Windows12Release\ARM64\Windows12.arm64.dll" "build\Windows12Release\ARM64\win12_setup.exe"
-        )
-        exit /b 0
-
-    - name: Delete Windows 12 intermediate files
+    - name: Delete intermediate files
       shell: bash
       run: |
-        rm -rf build/Windows12Release/x64/win12_setup_files
-        rm -f build/Windows12Release/x64/win12_setup_files.zip.bin
-        rm -rf build/Windows12Release/ARM64/win12_setup_files
-        rm -f build/Windows12Release/ARM64/win12_setup_files.zip.bin
+        rm -rf build/Release/x64/win12_setup_files
+        rm -f build/Release/x64/win12_setup_files.zip.bin
+        rm -rf build/Release/ARM64/win12_setup_files
+        rm -f build/Release/ARM64/win12_setup_files.zip.bin
 
     - name: Upload Windows 12 artifacts
       uses: actions/upload-artifact@v4
       with:
-        name: win12_bin_multi_${{ steps.win12_vars.outputs.sha_short }}_${{ steps.win12_vars.outputs.branch }}
+        name: win12_bin_multi_${{ steps.vars.outputs.sha_short }}_${{ steps.vars.outputs.branch }}
         path: |
-          build/Windows12Release/
+          build/Release/
 
     - name: Stage Windows 12 files for release
       if: github.ref == 'refs/heads/main' && github.event.inputs.ref == ''
       shell: bash
       run: |
-        if [ -d "build/Windows12Release/x64" ] && ls build/Windows12Release/x64/win12_setup.exe 1> /dev/null 2>&1; then
-          cp build/Windows12Release/x64/win12_setup.exe build/Windows12Release/win12_setup.exe
+        if [ -d "build/Release/x64" ] && ls build/Release/x64/win12_setup.exe 1> /dev/null 2>&1; then
+          cp build/Release/x64/win12_setup.exe build/Release/win12_setup.exe
         fi
-        if [ -d "build/Windows12Release/ARM64" ] && ls build/Windows12Release/ARM64/win12_setup.exe 1> /dev/null 2>&1; then
-          cp build/Windows12Release/ARM64/win12_setup.exe build/Windows12Release/win12_setup_arm64.exe
+        if [ -d "build/Release/ARM64" ] && ls build/Release/ARM64/win12_setup.exe 1> /dev/null 2>&1; then
+          cp build/Release/ARM64/win12_setup.exe build/Release/win12_setup_arm64.exe
         fi
 
     - name: Generate Windows 12 release name
       shell: bash
-      working-directory: build/Windows12Release/x64
+      working-directory: build/Release/x64
       if: github.ref == 'refs/heads/main' && github.event.inputs.ref == ''
       run: |
         echo "data=$(./win12_generate_release_name.exe)" >> $GITHUB_OUTPUT
@@ -187,11 +175,11 @@ jobs:
 
     - name: Generate Windows 12 release notes
       shell: bash
-      working-directory: build/Windows12Release/x64
+      working-directory: build/Release/x64
       if: github.ref == 'refs/heads/main' && github.event.inputs.ref == ''
       run: |
         echo "data<<WIN12_RELEASE_DESCRIPTION_DELIM" >> $GITHUB_OUTPUT
-        echo "$(./win12_generate_release_description.exe ${{ steps.win12_vars.outputs.sha_short }} ${{ steps.win12_vars.outputs.branch }} ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }})" >> $GITHUB_OUTPUT
+        echo "$(./win12_generate_release_description.exe ${{ steps.vars.outputs.sha_short }} ${{ steps.vars.outputs.branch }} ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }})" >> $GITHUB_OUTPUT
         echo "WIN12_RELEASE_DESCRIPTION_DELIM" >> $GITHUB_OUTPUT
       id: release_description
 
@@ -203,10 +191,10 @@ jobs:
         draft: false
         prerelease: ${{ !startsWith(github.event.head_commit.message, 'win12_rel_') }}
         name: ${{ steps.release_name.outputs.data }}
-        tag_name: ${{ steps.release_name.outputs.data }}_${{ steps.win12_vars.outputs.sha_short }}
+        tag_name: ${{ steps.release_name.outputs.data }}_${{ steps.vars.outputs.sha_short }}
         body: ${{ steps.release_description.outputs.data }}
         files: |
-          build/Windows12Release/win12_setup.exe
-          build/Windows12Release/win12_setup_arm64.exe
+          build/Release/win12_setup.exe
+          build/Release/win12_setup_arm64.exe
       env:
         GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
