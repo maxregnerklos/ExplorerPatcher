@@ -74,21 +74,7 @@ jobs:
       if: github.event.inputs.config == ''
       working-directory: ${{env.GITHUB_WORKSPACE}}
       run: |
-        msbuild /m /p:Configuration=${{env.BUILD_CONFIGURATION}} /p:Platform=IA-32 ${{env.SOLUTION_FILE_PATH}}
-
-    - name: Build Windows 12 amd64
-      run: |
         msbuild /m /p:Configuration=${{env.BUILD_CONFIGURATION}} /p:Platform=amd64 ${{env.SOLUTION_FILE_PATH}}
-        if exist "build\Release\x64\Windows12.amd64.dll" (
-          "build\Release\x64\win12_setup_patch.exe" "build\Release\x64\Windows12.amd64.dll" "build\Release\x64\win12_setup.exe"
-        )
-
-    - name: Build Windows 12 arm64
-      run: |
-        msbuild /m /p:Configuration=${{env.BUILD_CONFIGURATION}} /p:Platform=arm64 /p:WithArm64XBinaries=true ${{env.SOLUTION_FILE_PATH}}
-        if exist "build\Release\ARM64\Windows12.arm64.dll" (
-          "build\Release\x64\win12_setup_patch.exe" "build\Release\ARM64\Windows12.arm64.dll" "build\Release\ARM64\win12_setup.exe"
-        )
 
     - name: Create expected build directory
       if: github.event.inputs.build_dir != ''
@@ -96,14 +82,6 @@ jobs:
       run: |
         mkdir build
         cp -r ${{ github.event.inputs.build_dir }}/Release build/Release
-
-    - name: Delete intermediate files
-      shell: bash
-      run: |
-        rm -rf build/Release/x64/win12_setup_files
-        rm -f build/Release/x64/win12_setup_files.zip.bin
-        rm -rf build/Release/ARM64/win12_setup_files
-        rm -f build/Release/ARM64/win12_setup_files.zip.bin
 
     - name: Upload Windows 12 artifacts
       uses: actions/upload-artifact@v4
